@@ -1,39 +1,69 @@
-import sys
-import os
 from datetime import datetime
-import pytz
-from pyspark.sql import SparkSession
-
-# Adiciona o diretório raiz ao PYTHONPATH
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from src.transform import run_gold_transformation
+import os
+from pathlib import Path
+from pyspark.sql.functions import col, current_timestamp
+from src.transform import (
+    create_spark_session,
+    write_delta,
+)
 from src.logger import logger
 
+def main():
+    try:
+        spark = create_spark_session("GoldTransformation")
 
-def get_env_variable(name: str, default=None):
-    return os.getenv(name, default)
+        base_silver = "/home/project/data/silver"
+        base_gold = "/home/project/data/gold"
+        table_name = "gold_breweries"
 
+        carga = os.getenv("CARGA", "append").lower()
+        logger.info(f"⚙️ Modo de carga: {carga}")
 
-def get_processing_date() -> str:
-    timezone = pytz.timezone("America/Sao_Paulo")
-    today = datetime.now(timezone).date()
-    return today.strftime("%Y-%m-%d")
+        datas_disponiveis = sorted([
+            p.name.split("=")[-1] for p in Path(base_silver).iterdir()
+            if p.is_dir() and "processing_date=" in p.name
+        ])
 
+        logger.info(f"📅 Datas de processamento Gold: {datas_disponiveis}")
+
+        if not datas_disponiveis:
+            raise ValueError("❌ Nenhuma data de partição disponível para a camada Gold.")
+
+        df = (
+            spark.read.format("delta").load(base_silver)
+            .where(col("processing_date").isin(datas_disponiveis))
+        )
+
+        df_agg = (
+            df.groupBy("state", "brewery_type", "processing_date")
+            .count()
+            .withColumnRenamed("count", "brewery_count")
+            .withColumn("gold_load_date", current_timestamp())
+        )
+
+        if carga == "full":
+            spark.sql(f"DROP TABLE IF EXISTS {table_name}")
+            logger.info("🧹 Tabela Gold removida para recriação (modo full)")
+
+        write_delta(
+            df_agg,
+            base_gold,
+            mode="overwrite" if carga == "full" else "append",
+            partition_col="processing_date",
+        )
+
+        logger.info("💬 Adicionando comentários nas colunas da Gold")
+        spark.sql(f"CREATE TABLE IF NOT EXISTS {table_name} USING DELTA LOCATION '{base_gold}'")
+        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN state COMMENT 'Estado da cervejaria'")
+        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN brewery_type COMMENT 'Tipo da cervejaria'")
+        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN brewery_count COMMENT 'Quantidade de cervejarias agrupadas'")
+        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN processing_date COMMENT 'Data da carga'")
+        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN gold_load_date COMMENT 'Timestamp Gold'")
+
+        logger.info("💾 Dados gravados com sucesso")
+
+    except Exception as e:
+        logger.exception(f"❌ Erro no pipeline Gold: {e}")
 
 if __name__ == "__main__":
-    processing_date = get_env_variable("PROCESSING_DATE") or get_processing_date()
-
-    logger.info(f"🚀 Executando Gold para {processing_date}...")
-
-    spark = (
-        SparkSession.builder
-        .appName("Gold Layer Runner")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.sql.debug.maxToStringFields", 2000)
-        .config("spark.jars.packages", "io.delta:delta-core_2.12:2.3.0")
-        .getOrCreate()
-    )
-
-    run_gold_transformation(spark, processing_date)
+    main()

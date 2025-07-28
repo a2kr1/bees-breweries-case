@@ -1,51 +1,52 @@
 import os
 import sys
-from datetime import datetime
+from pathlib import Path
 from pyspark.sql import SparkSession
+from pyspark.sql.utils import AnalysisException
+from delta import configure_spark_with_delta_pip
+from src.logger import setup_logger
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+logger = setup_logger()
 
-from src.logger import logger
+builder = (
+    SparkSession.builder.appName("VerifyGold")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+)
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
+processing_date = os.getenv("PROCESSING_DATE")
+if not processing_date:
+    logger.error("❌ Variável de ambiente PROCESSING_DATE não definida.")
+    sys.exit(1)
 
-def get_processing_date():
-    return os.getenv("PROCESSING_DATE", datetime.today().strftime("%Y-%m-%d"))
+logger.info(f"📅 Verificando Gold para PROCESSING_DATE = {processing_date}")
 
+base_dir = Path(__file__).resolve().parents[1]
+gold_path = base_dir / "data" / "gold"
 
-def verify_gold_layer(spark, path):
-    logger.info(f"🔍 Verificando Gold em: {path}")
+if not gold_path.exists():
+    logger.error(f"❌ Diretório não encontrado: {gold_path}")
+    sys.exit(1)
 
-    if not os.path.exists(path):
-        logger.error(f"❌ Diretório Gold não encontrado: {path}")
-        return
+try:
+    df = spark.read.format("delta").load(str(gold_path)).where(f"processing_date = '{processing_date}'")
+    logger.info("✅ Leitura do Delta Lake na camada Gold realizada com sucesso.")
 
-    delta_log = os.path.join(path, "_delta_log")
-    if not os.path.exists(delta_log):
-        logger.error("❌ _delta_log ausente. Não é um diretório Delta válido.")
-        return
+    df.printSchema()
+    df.show(5, truncate=False)
 
+    count = df.count()
+    logger.info(f"📊 Total de registros na Gold ({processing_date}): {count}")
+
+except AnalysisException as e:
+    logger.error(f"❌ Erro ao ler Delta Lake Gold: {e}")
+    sys.exit(1)
+except Exception as e:
+    logger.error(f"❌ Erro inesperado: {e}")
+    sys.exit(1)
+finally:
     try:
-        df = spark.read.format("delta").load(path)
-        count = df.count()
-        logger.info(f"✅ Gold carregada com sucesso. Registros: {count}")
-
-        df.show(truncate=False)
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao verificar Gold: {str(e)}")
-
-
-if __name__ == "__main__":
-    processing_date = get_processing_date()
-    path = f"/home/project/data/gold/processing_date={processing_date}"
-
-    spark = (
-        SparkSession.builder
-        .appName("Verify Gold")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.jars.packages", "io.delta:delta-core_2.12:2.3.0")
-        .getOrCreate()
-    )
-
-    verify_gold_layer(spark, path)
+        spark.stop()
+    except NameError:
+        pass

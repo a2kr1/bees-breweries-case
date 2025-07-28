@@ -1,14 +1,19 @@
 import os
 import json
 import requests
-from datetime import datetime
+from time import sleep
 from dateutil import tz
+from pytz import timezone
+from datetime import datetime
 from src.logger import setup_logger
+
 
 logger = setup_logger()
 
-def fetch_breweries_from_api(base_url: str, output_dir: str, max_pages: int = 200, per_page: int = 50):
+
+def fetch_breweries_from_api(base_url: str, output_dir: str, max_pages: int = 200, per_page: int = 50, delay: float = 1.0):
     logger.info("🚀 Iniciando extração da camada Bronze...")
+    logger.info(f"🕒 Data e Hora: {datetime.now(timezone('America/Sao_Paulo')).strftime('%Y-%m-%d %H:%M:%S')}")
 
     today = datetime.now(tz=tz.gettz("America/Sao_Paulo")).date().isoformat()
     output_dir = os.path.join(output_dir, today)
@@ -40,6 +45,8 @@ def fetch_breweries_from_api(base_url: str, output_dir: str, max_pages: int = 20
 
             logger.info(f"✅ Página {page} salva com sucesso.")
             consecutive_errors = 0  # Reset após sucesso
+
+            sleep(delay)
 
         except Exception as e:
             logger.error(f"❌ Erro ao buscar página {page}: {str(e)}")

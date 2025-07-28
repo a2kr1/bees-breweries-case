@@ -1,83 +1,99 @@
 import os
-from datetime import datetime, timedelta
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, count
-from src.logger import logger  # ✅ Usando o logger direto
+from pathlib import Path
+from typing import Optional, List
+from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql.functions import current_timestamp, lit
+from delta import configure_spark_with_delta_pip
+from src.logger import logger
+from functools import reduce
 
-def get_spark_session(app_name="Silver Transformation") -> SparkSession:
-    spark = SparkSession.builder \
-        .appName(app_name) \
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-        .getOrCreate()
-    return spark
 
-def run_silver_transformation(spark: SparkSession, processing_date: str, delta_days: int) -> None:
-    base_path = "/home/project/data"
-    bronze_path = os.path.join(base_path, "bronze")
-    silver_path = os.path.join(base_path, "silver")
+def create_spark_session(app_name: str = "BreweriesETL") -> SparkSession:
+    builder = (
+        SparkSession.builder
+        .appName(app_name)
+        .config("spark.jars.packages", os.getenv("DELTA_PACKAGE", "io.delta:delta-core_2.12:2.4.0"))
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.databricks.delta.schema.autoMerge.enabled", "true")
+        .config("spark.sql.shuffle.partitions", "2")
+    )
+    return configure_spark_with_delta_pip(builder).getOrCreate()
 
-    processing_dt = datetime.strptime(processing_date, "%Y-%m-%d")
 
-    for i in range(delta_days + 1):
-        current_date = processing_dt - timedelta(days=i)
-        current_partition = current_date.strftime("%Y-%m-%d")
-        current_input_dir = os.path.join(bronze_path, current_partition)
-        current_output_dir = os.path.join(silver_path, f"processing_date={current_partition}")
+def write_delta(
+    df: DataFrame,
+    output_path: str,
+    mode: str = "append",
+    partition_col: Optional[str] = None,
+    overwrite_schema: bool = False
+):
+    writer = df.write.format("delta").mode(mode)
+    if partition_col:
+        writer = writer.partitionBy(partition_col)
+    writer = writer.option("mergeSchema", "true")
+    if overwrite_schema:
+        writer = writer.option("overwriteSchema", "true")
+    writer.save(output_path)
 
-        logger.info(f"🚀 Processando {current_partition}...")
 
-        if not os.path.exists(current_input_dir):
-            logger.warning(f"⚠️ Dados não encontrados para {current_partition}: {current_input_dir}")
-            continue
+def list_available_dates(base_path: str) -> List[str]:
+    path = Path(base_path)
+    if not path.exists():
+        return []
+    return sorted([p.name for p in path.iterdir() if p.is_dir()])
 
-        try:
-            df = spark.read.option("multiLine", True).json(current_input_dir)
 
-            if "_corrupt_record" in df.columns:
-                total = df.count()
-                corrupted = df.filter(col("_corrupt_record").isNotNull()).count()
-                if total == corrupted:
-                    logger.warning(f"❌ Todos os registros de {current_partition} estão corrompidos. Pulando.")
-                    continue
+def load_and_union_jsons(spark: SparkSession, input_path: str) -> DataFrame:
+    """
+    Lê múltiplos arquivos JSON paginados com múltiplos objetos por arquivo,
+    unificando todos em um único DataFrame com tolerância a colunas ausentes.
+    """
+    files = sorted(Path(input_path).glob("*.json"))
+    if not files:
+        raise FileNotFoundError(f"Nenhum arquivo JSON encontrado em {input_path}")
 
-            df_clean = df.dropDuplicates(["id"])
+    logger.info(f"📂 {len(files)} arquivos JSON encontrados para leitura")
 
-            df_clean.write.format("delta") \
-                .mode("overwrite") \
-                .option("overwriteSchema", "true") \
-                .save(current_output_dir)
+    df_list = [
+        spark.read.option("multiline", "true").json(str(file))
+        for file in files
+    ]
 
-            logger.info(f"✅ Dados salvos em: {current_output_dir}")
+    if len(df_list) == 1:
+        return df_list[0]
 
-        except Exception as e:
-            logger.error(f"❌ Erro ao processar {current_partition}: {str(e)}")
+    df_union = reduce(lambda df1, df2: df1.unionByName(df2, allowMissingColumns=True), df_list)
+    return df_union
 
-    logger.info("✅ Reprocessamento finalizado.")
 
-def run_gold_transformation(spark: SparkSession, processing_date: str) -> None:
-    silver_path = "/home/project/data/silver"
-    gold_path = "/home/project/data/gold"
-    input_path = os.path.join(silver_path, f"processing_date={processing_date}")
-    output_path = os.path.join(gold_path, f"processing_date={processing_date}")
+def read_delta_partitioned(spark: SparkSession, path: str, partition_values: List[str]) -> DataFrame:
+    """
+    Lê dados particionados de um diretório Delta Lake com base em valores de partição.
+    """
+    all_dfs = []
+    for date in partition_values:
+        partition_path = os.path.join(path, f"processing_date={date}")
+        if os.path.exists(partition_path) or _path_exists_on_hdfs(spark, partition_path):
+            df = spark.read.format("delta").load(partition_path)
+            all_dfs.append(df)
+        else:
+            logger.warning(f"⚠️ Partição não encontrada: {partition_path}")
 
-    logger.info(f"🔄 Iniciando agregação Gold para {processing_date}...")
+    if not all_dfs:
+        raise ValueError("❌ Nenhuma partição válida encontrada para leitura.")
 
-    if not os.path.exists(input_path):
-        logger.warning(f"⚠️ Silver não encontrada para {processing_date}: {input_path}")
-        return
+    logger.info(f"📊 {len(all_dfs)} partições lidas com sucesso.")
+    return reduce(lambda df1, df2: df1.unionByName(df2, allowMissingColumns=True), all_dfs)
 
+
+def _path_exists_on_hdfs(spark: SparkSession, path: str) -> bool:
+    """
+    Verifica se um caminho existe no HDFS ou no sistema de arquivos distribuído acessível pelo Spark.
+    """
     try:
-        df = spark.read.format("delta").load(input_path)
-
-        df_gold = df.groupBy("brewery_type", "state").agg(count("id").alias("total_breweries"))
-
-        df_gold.write.format("delta") \
-            .mode("overwrite") \
-            .option("overwriteSchema", "true") \
-            .save(output_path)
-
-        logger.info(f"✅ Agregação Gold salva em: {output_path}")
-
+        fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
+        return fs.exists(spark._jvm.org.apache.hadoop.fs.Path(path))
     except Exception as e:
-        logger.error(f"❌ Erro na transformação Gold: {str(e)}")
+        logger.warning(f"⚠️ Erro ao verificar existência do caminho no HDFS: {e}")
+        return False

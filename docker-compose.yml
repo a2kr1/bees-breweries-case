@@ -1,17 +1,60 @@
 version: "3.9"
 
 services:
-  spark:
-    container_name: spark-container
-    build: .
-    image: bees-breweries-case-spark:latest
-    ports:
-      - "4040:4040"  # Spark UI
-    volumes:
-      - .:/home/project           # monta o projeto inteiro
-      - ./data/bronze:/opt/landing
-      - ./data/silver:/opt/delta/silver
+  postgres:
+    image: postgres:13
     environment:
-      - SPARK_MODE=master
-    working_dir: /home/project/scripts
-    command: tail -f /dev/null  # Container fica ativo para execuções manuais
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+
+  airflow-webserver:
+    image: apache/airflow:2.7.2
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__WEBSERVER__RBAC: "True"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.2
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: scheduler
+
+  spark-container:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/home/project
+    ports:
+      - "4040:4040"
+    environment:
+      PYTHONPATH: /home/project
+
+volumes:
+  postgres-db-volume:

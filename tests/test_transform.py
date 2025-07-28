@@ -1,22 +1,38 @@
+# tests/test_transform.py
 
 import pytest
 from pyspark.sql import SparkSession
-from src.transform import deduplicate_breweries
+from pyspark.sql.types import StructType, StructField, StringType
+from src.transform import transform_to_silver
 
 @pytest.fixture(scope="session")
 def spark():
-    return (
-        SparkSession.builder.master("local[1]").appName("TestTransform").getOrCreate()
-    )
+    return SparkSession.builder \
+        .appName("TestTransform") \
+        .master("local[1]") \
+        .getOrCreate()
 
-def test_deduplicate_breweries(spark):
-    data = [
-        {"id": "a", "name": "Brew 1"},
-        {"id": "a", "name": "Brew 1"},  # duplicata
-        {"id": "b", "name": "Brew 2"}
+def test_transform_to_silver_should_clean_and_add_metadata(spark):
+    # Dado: um DataFrame bruto simulado como na camada Bronze
+    input_data = [
+        {"id": "abc123", "name": "Brew 1", "state": "Texas"},
+        {"id": "def456", "name": "Brew 2", "state": "California"},
     ]
-    df = spark.createDataFrame(data)
-    result = deduplicate_breweries(df)
-    assert result.count() == 2
-    ids = [row["id"] for row in result.collect()]
-    assert set(ids) == {"a", "b"}
+    schema = StructType([
+        StructField("id", StringType(), True),
+        StructField("name", StringType(), True),
+        StructField("state", StringType(), True)
+    ])
+    df_input = spark.createDataFrame(input_data, schema=schema)
+
+    # Quando: aplicamos a transformação
+    processing_date = "2025-07-27"
+    df_result = transform_to_silver(df_input, processing_date)
+
+    # Então: o resultado deve conter as colunas esperadas e o campo de data
+    expected_columns = set(["id", "name", "state", "silver_load_date", "processing_date"])
+    assert set(df_result.columns).issuperset(expected_columns)
+
+    rows = df_result.collect()
+    assert all(row["processing_date"] == processing_date for row in rows)
+    assert all(row["silver_load_date"] is not None for row in rows)

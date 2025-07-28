@@ -1,49 +1,75 @@
-import sys
 import os
 from datetime import datetime, timedelta
-import pytz
-from pyspark.sql import SparkSession
+from pyspark.sql.functions import current_timestamp
+from src.transform import create_spark_session, write_delta, list_available_dates, load_and_union_jsons
+from src.logger import logger
+from pyspark.sql import functions as F
+from pyspark.sql.utils import AnalysisException
 
-# Adiciona o diretório raiz ao PYTHONPATH
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+def extract_mode() -> str:
+    return os.getenv("CARGA", "append").lower()
 
-from src.transform import run_silver_transformation
-from src.logger import logger  # Importa diretamente o logger já configurado
+def extract_processing_dates(mode: str, base_path: str) -> list:
+    if mode == "full":
+        return list_available_dates(base_path)
+    elif mode == "delta":
+        days = int(os.getenv("DELTA_DAYS", "1"))
+        return [
+            (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(days)
+        ]
+    else:
+        return [os.getenv("PROCESSING_DATE", datetime.now().strftime("%Y-%m-%d"))]
 
+def create_table_if_not_exists(spark, path: str, recreate: bool = False):
+    full_table_name = "silver_breweries"
+    if recreate:
+        try:
+            if spark.catalog.tableExists(full_table_name):
+                spark.sql(f"DROP TABLE {full_table_name}")
+        except AnalysisException:
+            pass
 
-def get_env_variable(name: str, default=None):
-    return os.getenv(name, default)
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {full_table_name}
+        USING DELTA
+        LOCATION '{path}'
+    """)
 
+    if recreate:
+        logger.info("💬 Adicionando comentários nas colunas da Silver")
+        spark.sql("ALTER TABLE silver_breweries ALTER COLUMN id COMMENT 'ID da cervejaria'")
+        spark.sql("ALTER TABLE silver_breweries ALTER COLUMN name COMMENT 'Nome da cervejaria'")
+        spark.sql("ALTER TABLE silver_breweries ALTER COLUMN state COMMENT 'Estado'")
+        spark.sql("ALTER TABLE silver_breweries ALTER COLUMN brewery_type COMMENT 'Tipo'")
+        spark.sql("ALTER TABLE silver_breweries ALTER COLUMN processing_date COMMENT 'Data da carga'")
+        spark.sql("ALTER TABLE silver_breweries ALTER COLUMN silver_load_date COMMENT 'Timestamp Silver'")
 
-def get_processing_date(delta_days: int = 0) -> str:
-    timezone = pytz.timezone("America/Sao_Paulo")
-    today = datetime.now(timezone).date()
-    processing_date = today + timedelta(days=delta_days)
-    return processing_date.strftime("%Y-%m-%d")
+def main():
+    try:
+        spark = create_spark_session("SilverTransformation")
+        mode = extract_mode()
+        logger.info(f"⚙️ Modo de carga: {mode}")
 
+        base_bronze = "/home/project/data/bronze"
+        base_silver = "/home/project/data/silver"
+        processing_dates = extract_processing_dates(mode, base_bronze)
+        logger.info(f"📅 Datas de processamento Silver: {processing_dates}")
+
+        for date in processing_dates:
+            input_path = f"{base_bronze}/{date}"
+            df = load_and_union_jsons(spark, input_path)
+            df = df.select("id", "name", "state", "brewery_type") \
+                   .withColumn("processing_date", F.lit(date)) \
+                   .withColumn("silver_load_date", current_timestamp())
+
+            write_delta(df, base_silver, mode="append", partition_col="processing_date")
+
+        create_table_if_not_exists(spark, base_silver, recreate=(mode == "full"))
+        logger.info("💾 Dados gravados com sucesso")
+    except Exception as e:
+        logger.error(f"❌ Erro no pipeline Silver: {str(e)}")
+        raise
 
 if __name__ == "__main__":
-    try:
-        delta_days = int(get_env_variable("DELTA_DAYS", 0))
-    except ValueError:
-        logger.warning("⚠️ DELTA_DAYS inválido. Usando 0.")
-        delta_days = 0
-
-    processing_date = get_env_variable("PROCESSING_DATE")
-    if not processing_date:
-        processing_date = get_processing_date(delta_days)
-
-    logger.info(f"🔄 DELTA_DAYS configurado: {delta_days}")
-    logger.info(f"🚀 Processando {processing_date}...")
-
-    spark = (
-        SparkSession.builder
-        .appName("Silver Layer Runner")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.sql.debug.maxToStringFields", 2000)
-        .config("spark.jars.packages", "io.delta:delta-core_2.12:2.3.0")
-        .getOrCreate()
-    )
-
-    run_silver_transformation(spark, processing_date, delta_days)
+    main()
