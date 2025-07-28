@@ -1,4 +1,6 @@
-# 🍺 BEES Breweries Case – Engenharia de Dados
+# BEES Breweries Case
+
+![CI](https://github.com/a2kr1/bees-breweries-case/actions/workflows/python-ci.yml/badge.svg)
 
 Este projeto entrega uma solução completa de ingestão, transformação e análise de dados baseada na arquitetura Medallion (Bronze, Silver, Gold), utilizando PySpark, Delta Lake, Airflow e Docker.
 
@@ -148,29 +150,5 @@ Ver detalhes em [`data_catalog.md`](./data_catalog.md)
 
 **André Santos** – Engenharia de Dados  
 [LinkedIn](https://linkedin.com) • [GitHub](https://github.com)
-
----
-
-## ✅ Status Final do Case
-
-| Requisito do PDF | Implementado? | Observações |
-|------------------|---------------|-------------|
-| Ingestão API     | ✅            | Open Brewery DB via paginação |
-| Bronze Layer     | ✅            | JSON bruto por data           |
-| Silver Layer     | ✅            | Delta particionado + metadados |
-| Gold Layer       | ✅            | Agregação por tipo e estado   |
-| Orquestração     | ✅            | DAG no Airflow                |
-| Docker           | ✅            | Com `compose` e container Spark |
-| Logging/Erros    | ✅            | Logger estruturado em todas etapas |
-| Testes           | ✅            | `pytest` + `verify_*` + `check_duplicates` |
-| Documentação     | ✅            | README, SETUP.md, catálogo e Makefile |
-
----
-
-## 📎 Recursos Extras
-
-- `Makefile`: atalho para execução local e Docker
-- `SETUP.md`: instruções detalhadas para setup e testes
-- `.dockerignore`, `.gitignore` e `requirements.txt` configurados
 
 ---
