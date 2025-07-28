@@ -15,13 +15,14 @@ def spark():
 def test_transform_to_silver_should_clean_and_add_metadata(spark):
     # Dado: um DataFrame bruto simulado como na camada Bronze
     input_data = [
-        {"id": "abc123", "name": "Brew 1", "state": "Texas"},
-        {"id": "def456", "name": "Brew 2", "state": "California"},
+        {"id": "abc123", "name": "Brew 1", "state": "Texas", "brewery_type": "micro"},
+        {"id": "def456", "name": "Brew 2", "state": "California", "brewery_type": "regional"},
     ]
     schema = StructType([
         StructField("id", StringType(), True),
         StructField("name", StringType(), True),
-        StructField("state", StringType(), True)
+        StructField("state", StringType(), True),
+        StructField("brewery_type", StringType(), True)
     ])
     df_input = spark.createDataFrame(input_data, schema=schema)
 
@@ -29,9 +30,9 @@ def test_transform_to_silver_should_clean_and_add_metadata(spark):
     processing_date = "2025-07-27"
     df_result = transform_to_silver(df_input, processing_date)
 
-    # Então: o resultado deve conter as colunas esperadas e o campo de data
-    expected_columns = set(["id", "name", "state", "silver_load_date", "processing_date"])
-    assert set(df_result.columns).issuperset(expected_columns)
+    # Então: o resultado deve conter as colunas esperadas e os campos de metadados
+    expected_columns = {"id", "name", "state", "brewery_type", "silver_load_date", "processing_date"}
+    assert expected_columns.issubset(set(df_result.columns))
 
     rows = df_result.collect()
     assert all(row["processing_date"] == processing_date for row in rows)
