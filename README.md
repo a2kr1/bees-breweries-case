@@ -1,4 +1,4 @@
-# 🍺 BEES Breweries Case – Entrega Final
+# 🍺 BEES Breweries Case
 
 ![CI](https://github.com/a2kr1/bees-breweries-case/actions/workflows/python-ci.yml/badge.svg)
 
@@ -7,7 +7,7 @@ A arquitetura adotada segue o padrão **Medallion** (Bronze, Silver, Gold), com 
 
 ---
 
-## 📄 Escopo oficial do case (resumo do PDF e email)
+## 📄 Escopo oficial do case
 
 Conforme instruções fornecidas:
 
