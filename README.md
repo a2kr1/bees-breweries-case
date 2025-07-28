@@ -1,95 +1,96 @@
-# BEES Breweries Case
+# 🍺 BEES Breweries Case – Entrega Final
 
 ![CI](https://github.com/a2kr1/bees-breweries-case/actions/workflows/python-ci.yml/badge.svg)
 
-Este projeto entrega uma solução completa de ingestão, transformação e análise de dados baseada na arquitetura Medallion (Bronze, Silver, Gold), utilizando PySpark, Delta Lake, Airflow e Docker.
+Este projeto implementa uma solução completa para o case técnico da vaga de Engenheiro de Dados Sênior na BEES.  
+A arquitetura adotada segue o padrão **Medallion** (Bronze, Silver, Gold), com **Airflow para orquestração**, **PySpark com Delta Lake para processamento** e **Docker para isolamento do ambiente**.
 
 ---
 
-## 🎯 Objetivo do Case
+## 📄 Escopo oficial do case (resumo do PDF e email)
 
-> “Consumir dados da API Open Brewery DB, transformá-los e persistir em um Data Lake estruturado em três camadas (raw, curated, analytics), com orquestração, containerização, testes e documentação.” – conforme especificado no PDF oficial `DE Case Atualizado.pdf`
+Conforme instruções fornecidas:
+
+1. **Consumir dados da API Open Brewery DB**  
+2. **Aplicar arquitetura Medallion (Bronze, Silver, Gold)**  
+3. **Persistência em Data Lake particionado por localização e data**  
+4. **Orquestração com ferramenta como Airflow**  
+5. **Testes automatizados**  
+6. **Tratamento de erros e logging**  
+7. **Containerização com Docker (bônus)**  
+8. **Documentar design, trade-offs e instruções de execução**  
+9. **Entregar em repositório público no GitHub com README completo**
+
+---
+
+## ✅ Entregas implementadas
+
+| Requisito                           | Implementado | Local / Detalhes                                                   |
+|------------------------------------|--------------|----------------------------------------------------------------------|
+| Ingestão da API Open Brewery DB    | ✅           | `scripts/run_bronze.py`, `src/api_client.py`                        |
+| Arquitetura Bronze → Silver → Gold| ✅           | Diretórios `data/bronze`, `data/silver`, `data/gold`                |
+| Particionamento por data           | ✅           | Via `processing_date`, física e lógica                              |
+| PySpark + Delta Lake               | ✅           | `src/transform.py`, uso de `.write.format("delta")`                |
+| Orquestração com Airflow           | ✅           | `airflow/dags/brewery_dag.py`                                       |
+| Logging estruturado com timezone   | ✅           | `src/logger.py` (America/Sao_Paulo)                                 |
+| Tratamento robusto de erros        | ✅           | `try/except`, logs em todas as etapas                               |
+| Testes automatizados               | ✅           | `tests/test_transform.py`, `tests/verify_*.py`, `verify_all.py`     |
+| CI/CD com GitHub Actions           | ✅           | `.github/workflows/python-ci.yml`                                   |
+| Containerização com Docker         | ✅           | `Dockerfile`, `docker-compose.yml`, execução por `spark-bees`       |
+| Documentação clara e completa      | ✅           | `README.md`, `SETUP.md`, `data_catalog.md`, Makefile                |
 
 ---
 
 ## 🗂️ Arquitetura Medallion
 
-### 🔹 Bronze Layer
-- Ingestão de dados da API [Open Brewery DB](https://www.openbrewerydb.org/)
-- Salvamento bruto em JSON por data (`data/bronze/YYYY-MM-DD/`)
-- Paginado e robusto a falhas
+### 🟫 Bronze
+- Leitura paginada da API Open Brewery DB
+- Salvamento de arquivos JSON (por data e página)
 
-### 🔸 Silver Layer
-- Leitura dos arquivos JSON e unificação com tolerância a colunas ausentes
-- Escrita em Delta Lake com particionamento por `processing_date`
-- Criação da tabela `silver_breweries` com comentários de colunas
+### 🟪 Silver
+- Leitura de múltiplos arquivos com tolerância a colunas ausentes
+- Escrita em Delta Lake, com `silver_load_date` e `processing_date`
 
-### 🟡 Gold Layer
-- Agregação por `state`, `brewery_type`, `processing_date`
-- Escrita em Delta Lake com tabela `gold_breweries`
-- Comentários em colunas e particionamento físico
+### 🟨 Gold
+- Agregações por `state`, `brewery_type` e `processing_date`
+- Escrita em Delta, criação de tabela com comentários
 
 ---
 
-## ⚙️ Execução com Docker (recomendado)
+## 🧪 Testes e Qualidade
+
+- Testes unitários em `tests/test_transform.py` com `pytest`
+- Validação de camadas com `verify_bronze.py`, `verify_silver.py`, `verify_gold.py`
+- Checagem de duplicatas em `tests/check_duplicates_silver.py`
+- Verificação automatizada em `verify_all.py`
+
+Executado via:
 
 ```bash
-# Subir os containers
+pytest tests/
+# ou via CI
+```
+
+---
+
+## ⚙️ Execução via Docker (recomendada)
+
+```bash
 docker compose build
 docker compose up -d
 ```
 
-### Executar as etapas manualmente (exemplo)
+Executar etapas manualmente:
 
 ```bash
-# Bronze
 docker exec -e PROCESSING_DATE=2025-07-27 -it spark-bees python3 /home/project/scripts/run_bronze.py
-
-# Silver
 docker exec -e CARGA=append -e PROCESSING_DATE=2025-07-27 -it spark-bees python3 /home/project/scripts/run_silver.py
-
-# Gold
 docker exec -e CARGA=append -e PROCESSING_DATE=2025-07-27 -it spark-bees python3 /home/project/scripts/run_gold.py
 ```
 
 ---
 
-## 📅 Parâmetros suportados
-
-| Parâmetro         | Descrição                                                             |
-|------------------|------------------------------------------------------------------------|
-| `CARGA`           | Modo de carga: `full`, `append`, `delta`                              |
-| `PROCESSING_DATE` | Data de referência no formato `YYYY-MM-DD`                            |
-| `DELTA_DAYS`      | Quantos dias anteriores processar no modo `delta`                     |
-
----
-
-## 🧪 Testes e Validações
-
-### Testes unitários (PySpark)
-
-```bash
-pytest tests/
-```
-
-### Validações por camada
-
-```bash
-python tests/verify_bronze.py
-python tests/verify_silver.py
-python tests/verify_gold.py
-python tests/check_duplicates_silver.py
-```
-
-### Validação completa
-
-```bash
-python tests/verify_all.py
-```
-
----
-
-## 🧵 Execução Local (modo `.venv`)
+## 🧵 Execução local (alternativa)
 
 ```bash
 python -m venv .venv
@@ -100,55 +101,49 @@ python scripts/main.py
 
 ---
 
-## 📂 Organização dos Scripts
-
-```bash
-scripts/
-├── run_bronze.py   # Extrai dados da API e salva JSON (camada Bronze)
-├── run_silver.py   # Lê arquivos Bronze, transforma e escreve Delta (Silver)
-├── run_gold.py     # Agrega e escreve tabela Gold particionada
-├── main.py         # Orquestrador local: Bronze → Silver → Gold
-```
-
-Todos os scripts possuem função `main()` compatível com `import` e execução CLI.
-
----
-
 ## 🎛️ Airflow
 
-DAG localizada em:
-
-```bash
-airflow/dags/brewery_dag.py
-```
-
-Configuração:
-- Tarefa sequencial: Bronze → Silver → Gold
-- BashOperator com execução em container Docker
-- Suporte a `PROCESSING_DATE`, `CARGA`, `DELTA_DAYS`
+A DAG `brewery_dag.py` orquestra as 3 camadas em sequência.  
+Local: `airflow/dags/brewery_dag.py`
 
 ---
 
-## 🧠 Boas Práticas aplicadas
+## 📦 Estrutura de Projeto
 
-✅ Logging estruturado com timezone (America/Sao_Paulo)  
-✅ Tratamento de erros com logs em todas as etapas  
-✅ Scripts modulares com funções nomeadas  
-✅ Estrutura de projeto clara e separação de camadas  
-✅ Código testado e validado com `pytest` e `verify_all.py`  
-✅ Compatível com Airflow, Docker, Makefile, e execução local  
+- `scripts/` — Execução modular por camada (`run_*.py`, `main.py`)
+- `src/` — Funções reutilizáveis e sessões Spark
+- `tests/` — Testes unitários e validações
+- `data/` — Camadas bronze/silver/gold organizadas por data
+- `.github/workflows/` — Pipeline CI/CD
 
 ---
 
-## 🗃️ Catálogo de Dados
+## 🧠 Boas práticas adotadas
 
-Ver detalhes em [`data_catalog.md`](./data_catalog.md)
+- Código modular, com `main()` por script
+- Logging padronizado e contextualizado
+- Testes isoláveis com SparkSession local
+- Particionamento físico e lógico por data
+- Comentários automáticos nas tabelas Delta (modo full)
+- Pipeline validado com `Makefile` e `verify_all.py`
+
+---
+
+## 🧾 Catálogo de Dados
+
+Disponível em [`data_catalog.md`](./data_catalog.md)
 
 ---
 
 ## 👨‍💻 Autor
 
-**André Santos** – Engenharia de Dados  
-[LinkedIn](https://linkedin.com) • [GitHub](https://github.com)
+**André Santos**  
+Engenheiro de Dados | [GitHub](https://github.com/a2kr1)
+
+---
+
+## ✅ Repositório
+
+🔗 https://github.com/a2kr1/bees-breweries-case
 
 ---
