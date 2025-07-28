@@ -55,6 +55,9 @@ services:
       - "4040:4040"
     environment:
       PYTHONPATH: /home/project
+    # Dependência opcional (para garantir que postgres já esteja up, se necessário futuramente)
+    depends_on:
+      - postgres
 
 volumes:
   postgres-db-volume:
