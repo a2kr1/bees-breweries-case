@@ -33,8 +33,9 @@ def main():
     silver_path = Path("/home/project/data/silver")
 
     try:
-        df = spark.read.format("delta").load(str(silver_path))
         df_filtered = df.filter(col("processing_date") == processing_date)
+        # Leitura já estava correta, mas o load precisa considerar subpastas:
+        df = spark.read.format("delta").load(str(silver_path))
 
         df_duplicates = (
             df_filtered.groupBy("id", "processing_date")

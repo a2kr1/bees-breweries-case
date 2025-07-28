@@ -29,14 +29,14 @@ Conforme instruções fornecidas:
 |------------------------------------|--------------|----------------------------------------------------------------------|
 | Ingestão da API Open Brewery DB    | ✅           | `scripts/run_bronze.py`, `src/api_client.py`                        |
 | Arquitetura Bronze → Silver → Gold| ✅           | Diretórios `data/bronze`, `data/silver`, `data/gold`                |
-| Particionamento por data           | ✅           | Via `processing_date`, física e lógica                              |
-| PySpark + Delta Lake               | ✅           | `src/transform.py`, uso de `.write.format("delta")`                |
+| Particionamento por data e estado  | ✅           | Via `["processing_date", "state"]`                                  |
+| PySpark + Delta Lake               | ✅           | `src/transform.py`, `.write.format("delta")`, Delta Lake 2.4.0      |
 | Orquestração com Airflow           | ✅           | `airflow/dags/brewery_dag.py`                                       |
 | Logging estruturado com timezone   | ✅           | `src/logger.py` (America/Sao_Paulo)                                 |
 | Tratamento robusto de erros        | ✅           | `try/except`, logs em todas as etapas                               |
 | Testes automatizados               | ✅           | `tests/test_transform.py`, `tests/verify_*.py`, `verify_all.py`     |
 | CI/CD com GitHub Actions           | ✅           | `.github/workflows/python-ci.yml`                                   |
-| Containerização com Docker         | ✅           | `Dockerfile`, `docker-compose.yml`, execução por `spark-bees`       |
+| Containerização com Docker         | ✅           | `Dockerfile`, `docker-compose.yml`, execução via `spark-container`  |
 | Documentação clara e completa      | ✅           | `README.md`, `SETUP.md`, `data_catalog.md`, Makefile                |
 
 ---
@@ -45,15 +45,17 @@ Conforme instruções fornecidas:
 
 ### 🟫 Bronze
 - Leitura paginada da API Open Brewery DB
-- Salvamento de arquivos JSON (por data e página)
+- Salvamento de arquivos JSON em: `/data/bronze/<processing_date>/`
 
 ### 🟪 Silver
 - Leitura de múltiplos arquivos com tolerância a colunas ausentes
-- Escrita em Delta Lake, com `silver_load_date` e `processing_date`
+- Escrita em Delta Lake, com particionamento por `processing_date` e `state`
+- Local: `/data/silver/processing_date=.../state=.../`
 
 ### 🟨 Gold
 - Agregações por `state`, `brewery_type` e `processing_date`
-- Escrita em Delta, criação de tabela com comentários
+- Escrita em Delta Lake com partições múltiplas
+- Local: `/data/gold/processing_date=.../state=.../`
 
 ---
 
@@ -68,7 +70,8 @@ Executado via:
 
 ```bash
 pytest tests/
-# ou via CI
+# ou
+python tests/verify_all.py
 ```
 
 ---
@@ -80,12 +83,12 @@ docker compose build
 docker compose up -d
 ```
 
-Executar etapas manualmente:
+Executar etapas manuais:
 
 ```bash
-docker exec -e PROCESSING_DATE=2025-07-27 -it spark-bees python3 /home/project/scripts/run_bronze.py
-docker exec -e CARGA=append -e PROCESSING_DATE=2025-07-27 -it spark-bees python3 /home/project/scripts/run_silver.py
-docker exec -e CARGA=append -e PROCESSING_DATE=2025-07-27 -it spark-bees python3 /home/project/scripts/run_gold.py
+docker exec -e PROCESSING_DATE=2025-07-27 -it bees-breweries-case-spark-container-1 python3 /home/project/scripts/run_bronze.py
+docker exec -e CARGA=append -e PROCESSING_DATE=2025-07-27 -it bees-breweries-case-spark-container-1 python3 /home/project/scripts/run_silver.py
+docker exec -e CARGA=append -e PROCESSING_DATE=2025-07-27 -it bees-breweries-case-spark-container-1 python3 /home/project/scripts/run_gold.py
 ```
 
 ---
@@ -113,18 +116,17 @@ Local: `airflow/dags/brewery_dag.py`
 - `scripts/` — Execução modular por camada (`run_*.py`, `main.py`)
 - `src/` — Funções reutilizáveis e sessões Spark
 - `tests/` — Testes unitários e validações
-- `data/` — Camadas bronze/silver/gold organizadas por data
+- `data/` — Camadas bronze/silver/gold organizadas por data e estado
 - `.github/workflows/` — Pipeline CI/CD
 
 ---
 
 ## 🧠 Boas práticas adotadas
 
-- Código modular, com `main()` por script
-- Logging padronizado e contextualizado
-- Testes isoláveis com SparkSession local
-- Particionamento físico e lógico por data
-- Comentários automáticos nas tabelas Delta (modo full)
+- Código modular e testável
+- Logging padronizado com timezone
+- Particionamento lógico e físico com múltiplas colunas
+- Comentários automáticos nas colunas Delta (modo full)
 - Pipeline validado com `Makefile` e `verify_all.py`
 
 ---
@@ -144,6 +146,4 @@ Engenheiro de Dados | [GitHub](https://github.com/a2kr1)
 
 ## ✅ Repositório
 
-🔗 https://github.com/a2kr1/bees-breweries-case
-
----
+https://github.com/a2kr1/bees-breweries-case

@@ -1,3 +1,4 @@
+
 import os
 from datetime import datetime, timedelta
 from pyspark.sql.functions import current_timestamp
@@ -14,10 +15,7 @@ def extract_processing_dates(mode: str, base_path: str) -> list:
         return list_available_dates(base_path)
     elif mode == "delta":
         days = int(os.getenv("DELTA_DAYS", "1"))
-        return [
-            (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-            for i in range(days)
-        ]
+        return [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
     else:
         return [os.getenv("PROCESSING_DATE", datetime.now().strftime("%Y-%m-%d"))]
 
@@ -30,11 +28,11 @@ def create_table_if_not_exists(spark, path: str, recreate: bool = False):
         except AnalysisException:
             pass
 
-    spark.sql(f"""
+    spark.sql(f'''
         CREATE TABLE IF NOT EXISTS {full_table_name}
         USING DELTA
         LOCATION '{path}'
-    """)
+    ''')
 
     if recreate:
         logger.info("💬 Adicionando comentários nas colunas da Silver")
@@ -63,7 +61,7 @@ def main():
                    .withColumn("processing_date", F.lit(date)) \
                    .withColumn("silver_load_date", current_timestamp())
 
-            write_delta(df, base_silver, mode="append", partition_col="processing_date")
+            write_delta(df, base_silver, mode="append", partition_col=["processing_date", "state"])
 
         create_table_if_not_exists(spark, base_silver, recreate=(mode == "full"))
         logger.info("💾 Dados gravados com sucesso")

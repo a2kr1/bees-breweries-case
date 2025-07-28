@@ -30,7 +30,7 @@ if not silver_path.exists():
     sys.exit(1)
 
 try:
-    df = spark.read.format("delta").load(str(silver_path)).where(f"processing_date = '{processing_date}'")
+    df = spark.read.format("delta").load(str(gold_path)).filter(f"processing_date = '{processing_date}'")
     logger.info("✅ Leitura do Delta Lake na camada Silver realizada com sucesso.")
 
     df.printSchema()

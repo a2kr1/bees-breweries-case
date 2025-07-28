@@ -38,6 +38,7 @@ COPY spark-defaults.conf $SPARK_HOME/conf/spark-defaults.conf
 # Diretório de trabalho
 WORKDIR /home/project
 COPY . /home/project
+RUN chmod -R 777 /home/project
 
 # Comando padrão ao entrar no container
-CMD [ "bash" ]
+CMD [ "bash", "tail", "-f", "/dev/null" ]

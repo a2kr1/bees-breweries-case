@@ -1,11 +1,9 @@
+
 from datetime import datetime
 import os
 from pathlib import Path
 from pyspark.sql.functions import col, current_timestamp
-from src.transform import (
-    create_spark_session,
-    write_delta,
-)
+from src.transform import create_spark_session, write_delta
 from src.logger import logger
 
 def main():
@@ -20,8 +18,8 @@ def main():
         logger.info(f"⚙️ Modo de carga: {carga}")
 
         datas_disponiveis = sorted([
-            p.name.split("=")[-1] for p in Path(base_silver).iterdir()
-            if p.is_dir() and "processing_date=" in p.name
+            p.name.split("=")[-1] for p in Path(base_silver).glob("processing_date=*")
+            if p.is_dir()
         ])
 
         logger.info(f"📅 Datas de processamento Gold: {datas_disponiveis}")
@@ -49,7 +47,7 @@ def main():
             df_agg,
             base_gold,
             mode="overwrite" if carga == "full" else "append",
-            partition_col="processing_date",
+            partition_col=["processing_date", "state"],
         )
 
         logger.info("💬 Adicionando comentários nas colunas da Gold")

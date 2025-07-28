@@ -74,7 +74,7 @@ if __name__ == "__main__":
             df_transformed = df_transformed.withColumn("silver_load_date", current_timestamp())
             df_final = df_transformed.withColumn("processing_date", lit(date))
 
-            write_delta(df_final, str(silver_base_path), mode="overwrite" if carga == "full" else "append", partition_col="processing_date", overwrite_schema=(carga == "full"))
+            write_delta(df_final, str(silver_base_path), mode="overwrite" if carga == "full" else "append", partition_col=["processing_date", "state"], overwrite_schema=(carga == "full"))
 
         create_table_if_not_exists(spark, str(silver_base_path), recreate=(carga == "full"))
         logger.info("✅ Pipeline Silver finalizada com sucesso.")
