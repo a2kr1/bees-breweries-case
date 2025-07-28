@@ -97,3 +97,12 @@ def _path_exists_on_hdfs(spark: SparkSession, path: str) -> bool:
     except Exception as e:
         logger.warning(f"⚠️ Erro ao verificar existência do caminho no HDFS: {e}")
         return False
+
+def transform_to_silver(df: DataFrame, processing_date: str) -> DataFrame:
+    """
+    Transforma o DataFrame bruto da Bronze em formato da Silver,
+    incluindo as colunas de metadados.
+    """
+    return df.select("id", "name", "state") \
+             .withColumn("processing_date", lit(processing_date)) \
+             .withColumn("silver_load_date", current_timestamp())
