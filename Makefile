@@ -1,47 +1,81 @@
-# Makefile para orquestração local e containerizada do pipeline BEES
+# Makefile - Projeto BEES Breweries
+# Uso:
+#   make bronze                → executa a camada Bronze
+#   make silver                → executa a camada Silver
+#   make gold                  → executa a camada Gold
+#   make verify                → executa todos os testes de verificação
+#   make test                  → executa testes unitários com pytest
+#   make duplicates            → verifica duplicatas na Silver
+#   make eda-silver            → executa EDA na camada Silver
+#   make eda-gold              → executa EDA na camada Gold
+#   make verify-eda-silver     → executa EDA na Silver via Docker
+#   make verify-eda-gold       → executa EDA na Gold via Docker
+#   make verify-all            → executa todas as verificações via Docker
+#   make all                   → executa bronze, silver, gold e verify
 
-# Variáveis de ambiente padrão
-PROCESSING_DATE ?= $(shell date +%F)
-CARGA ?= append
+# Variáveis padrões
+PROCESSING_DATE=$(shell date +%Y-%m-%d)
+CARGA=delta
+DELTA_DAYS=2
+PYTHON=python3
+PYTHONPATH=PYTHONPATH=./
 
-# Caminhos
-PYTHON ?= python
-PROJECT_ROOT := $(PWD)
+# Caminhos dos scripts principais
+BRONZE=./scripts/run_bronze.py
+SILVER=./scripts/run_silver.py
+GOLD=./scripts/run_gold.py
+VERIFY=./scripts/verify_all.py
 
-# Atalhos para execução local
-run-bronze:
-	$(PYTHON) scripts/run_bronze.py
+# Scripts de teste/validação
+TEST_TRANSFORM=tests/test_transform.py
+CHECK_DUPLICATES_SILVER=tests/check_duplicates_silver.py
+CHECK_DUPLICATES_GOLD=tests/check_duplicates_gold.py
+CHECK_EDA_SILVER=tests/check_eda_silver.py
+CHECK_EDA_GOLD=tests/check_eda_gold.py
 
-run-silver:
-	$(PYTHON) scripts/run_silver.py
+# Spark container (ajuste se necessário)
+CONTAINER=spark-container
 
-run-gold:
-	$(PYTHON) scripts/run_gold.py
+# Execução local via PYTHONPATH (recomendado fora do container)
+bronze:
+	$(PYTHONPATH) $(PYTHON) $(BRONZE)
 
-run-all:
-	$(PYTHON) scripts/main.py
+silver:
+	$(PYTHONPATH) $(PYTHON) $(SILVER)
+
+gold:
+	$(PYTHONPATH) $(PYTHON) $(GOLD)
+
+verify:
+	$(PYTHONPATH) $(PYTHON) $(VERIFY)
 
 test:
-	pytest tests/
+	pytest $(TEST_TRANSFORM)
 
-# Atalhos para execução com Docker
-docker-bronze:
-	docker exec -e CARGA=$(CARGA) -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/scripts/run_bronze.py
+duplicates-silver:
+	$(PYTHONPATH) $(PYTHON) $(CHECK_DUPLICATES_SILVER)
 
-docker-silver:
-	docker exec -e CARGA=$(CARGA) -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/scripts/run_silver.py
+duplicates-gold:
+	$(PYTHONPATH) $(PYTHON) $(CHECK_DUPLICATES_GOLD)
 
-docker-gold:
-	docker exec -e CARGA=$(CARGA) -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/scripts/run_gold.py
+eda-silver:
+	$(PYTHONPATH) $(PYTHON) $(CHECK_EDA_SILVER)
 
-docker-all:
-	docker exec -e CARGA=$(CARGA) -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/scripts/main.py
+eda-gold:
+	$(PYTHONPATH) $(PYTHON) $(CHECK_EDA_GOLD)
 
-verify-bronze:
-	docker exec -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/tests/verify_bronze.py
+# Execução via Docker (usando PYTHONPATH=/home/project)
+verify-eda-silver:
+	docker exec -e PYTHONPATH=/home/project -it $(CONTAINER) \
+	python3 /home/project/$(CHECK_EDA_SILVER)
 
-verify-silver:
-	docker exec -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/tests/verify_silver.py
+verify-eda-gold:
+	docker exec -e PYTHONPATH=/home/project -it $(CONTAINER) \
+	python3 /home/project/$(CHECK_EDA_GOLD)
 
-verify-gold:
-	docker exec -e PROCESSING_DATE=$(PROCESSING_DATE) -it spark-bees python3 /home/project/tests/verify_gold.py
+verify-all:
+	docker exec -e PYTHONPATH=/home/project -it spark-container \
+	python3 /home/project/tests/verify_all.py
+
+# Executa tudo em sequência
+all: bronze silver gold verify

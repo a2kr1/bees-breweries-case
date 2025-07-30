@@ -1,67 +1,85 @@
-
-from datetime import datetime
 import os
-from pathlib import Path
-from pyspark.sql.functions import col, current_timestamp
-from src.transform import create_spark_session, write_delta
+from datetime import datetime, timedelta
+from pyspark.sql import functions as F
+
+from src.transform import (
+    create_spark_session,
+    write_delta
+)
+from src.utils import get_timezone_aware_date
 from src.logger import logger
+
+
+def extract_mode() -> str:
+    return os.getenv("CARGA", "full").lower()
+
+
+def extract_processing_dates(mode: str) -> list:
+    base_silver = "/home/project/data/silver"
+
+    if mode == "full":
+        return sorted([
+            name.split("=")[1]
+            for name in os.listdir(base_silver)
+            if os.path.isdir(os.path.join(base_silver, name)) and name.startswith("processing_date=")
+        ])
+    elif mode == "delta":
+        days = int(os.getenv("DELTA_DAYS", "1"))
+        return [
+            (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(days)
+        ]
+    else:
+        return [os.getenv("PROCESSING_DATE", get_timezone_aware_date())]
+
 
 def main():
     try:
-        spark = create_spark_session("GoldTransformation")
+        spark = create_spark_session("Gold Aggregation")
+        mode = extract_mode()
+        logger.info(f"Modo de carga: {mode}")
 
         base_silver = "/home/project/data/silver"
         base_gold = "/home/project/data/gold"
+        processing_dates = extract_processing_dates(mode)
+        logger.info("[INFO] Lendo a tabela da Silver com filtro lógico por processing_date")
+
+        df_silver = spark.read.format("delta").load(base_silver).where(F.col("processing_date").isin(processing_dates))
+
+        required_columns = {"state", "brewery_type"}
+        if not required_columns.issubset(set(df_silver.columns)):
+            raise ValueError("Colunas necessárias ausentes na Silver: state, brewery_type")
+
+        df_gold = df_silver.groupBy("state", "brewery_type").agg(
+            F.count("*").alias("brewery_count")
+        ).withColumn("processing_date", F.lit(get_timezone_aware_date())) \
+         .withColumn("gold_load_date", F.current_timestamp())
+
+        write_delta(df_gold, base_gold, mode="append", partition_col="processing_date")
+
         table_name = "gold_breweries"
-
-        carga = os.getenv("CARGA", "append").lower()
-        logger.info(f"⚙️ Modo de carga: {carga}")
-
-        datas_disponiveis = sorted([
-            p.name.split("=")[-1] for p in Path(base_silver).glob("processing_date=*")
-            if p.is_dir()
-        ])
-
-        logger.info(f"📅 Datas de processamento Gold: {datas_disponiveis}")
-
-        if not datas_disponiveis:
-            raise ValueError("❌ Nenhuma data de partição disponível para a camada Gold.")
-
-        df = (
-            spark.read.format("delta").load(base_silver)
-            .where(col("processing_date").isin(datas_disponiveis))
-        )
-
-        df_agg = (
-            df.groupBy("state", "brewery_type", "processing_date")
-            .count()
-            .withColumnRenamed("count", "brewery_count")
-            .withColumn("gold_load_date", current_timestamp())
-        )
-
-        if carga == "full":
+        if mode == "full":
             spark.sql(f"DROP TABLE IF EXISTS {table_name}")
-            logger.info("🧹 Tabela Gold removida para recriação (modo full)")
 
-        write_delta(
-            df_agg,
-            base_gold,
-            mode="overwrite" if carga == "full" else "append",
-            partition_col=["processing_date", "state"],
-        )
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {table_name}
+            USING DELTA
+            LOCATION '{base_gold}'
+        """)
 
-        logger.info("💬 Adicionando comentários nas colunas da Gold")
-        spark.sql(f"CREATE TABLE IF NOT EXISTS {table_name} USING DELTA LOCATION '{base_gold}'")
-        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN state COMMENT 'Estado da cervejaria'")
-        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN brewery_type COMMENT 'Tipo da cervejaria'")
-        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN brewery_count COMMENT 'Quantidade de cervejarias agrupadas'")
-        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN processing_date COMMENT 'Data da carga'")
-        spark.sql("ALTER TABLE gold_breweries ALTER COLUMN gold_load_date COMMENT 'Timestamp Gold'")
+        if mode == "full":
+            logger.info("Adicionando comentários nas colunas da Gold")
+            spark.sql("ALTER TABLE gold_breweries ALTER COLUMN state COMMENT 'Estado da cervejaria'")
+            spark.sql("ALTER TABLE gold_breweries ALTER COLUMN brewery_type COMMENT 'Tipo de cervejaria'")
+            spark.sql("ALTER TABLE gold_breweries ALTER COLUMN brewery_count COMMENT 'Quantidade de cervejarias agrupadas'")
+            spark.sql("ALTER TABLE gold_breweries ALTER COLUMN processing_date COMMENT 'Data da carga lógica'")
+            spark.sql("ALTER TABLE gold_breweries ALTER COLUMN gold_load_date COMMENT 'Timestamp da carga Gold'")
 
-        logger.info("💾 Dados gravados com sucesso")
-
+        logger.info("Gold finalizada com sucesso.")
     except Exception as e:
-        logger.exception(f"❌ Erro no pipeline Gold: {e}")
+        logger.error(f"Erro ao executar a Gold: {e}")
+        raise
+
 
 if __name__ == "__main__":
     main()

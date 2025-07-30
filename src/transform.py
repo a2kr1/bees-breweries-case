@@ -49,7 +49,7 @@ def load_and_union_jsons(spark: SparkSession, input_path: str) -> DataFrame:
     if not files:
         raise FileNotFoundError(f"Nenhum arquivo JSON encontrado em {input_path}")
 
-    logger.info(f"📂 {len(files)} arquivos JSON encontrados para leitura")
+    logger.info(f"{len(files)} arquivos JSON encontrados para leitura")
     df_list = [spark.read.option("multiline", "true").json(str(file)) for file in files]
 
     if len(df_list) == 1:
@@ -66,7 +66,7 @@ def read_delta_partitioned(spark: SparkSession, path: str, partition_values: Lis
         else:
             logger.warning(f"⚠️ Partição não encontrada: {partition_path}")
     if not all_dfs:
-        raise ValueError("❌ Nenhuma partição válida encontrada para leitura.")
+        raise ValueError("Nenhuma partição válida encontrada para leitura.")
     logger.info(f"📊 {len(all_dfs)} partições lidas com sucesso.")
     return reduce(lambda df1, df2: df1.unionByName(df2, allowMissingColumns=True), all_dfs)
 
@@ -75,7 +75,7 @@ def _path_exists_on_hdfs(spark: SparkSession, path: str) -> bool:
         fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
         return fs.exists(spark._jvm.org.apache.hadoop.fs.Path(path))
     except Exception as e:
-        logger.warning(f"⚠️ Erro ao verificar existência do caminho no HDFS: {e}")
+        logger.warning(f"Erro ao verificar existência do caminho no HDFS: {e}")
         return False
 
 def transform_to_silver(df: DataFrame, processing_date: str) -> DataFrame:
