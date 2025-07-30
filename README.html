@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Documentação - BEES Breweries Case</title>
+    <script type="text/javascript" src="https://gc.kis.v2.scr.kaspersky-labs.com/FD126C42-EBFA-4E12-B309-BB3FDD723AC1/main.js?attr=NucmLFsfRLLaZUcnIirLxDc-N2D__wMpGMCnf7QdQAUPh9rTfSZio80aJTEZg_E3L1PRCGXQ1NiVlD3dFavKEGbocZbn-iDSGqYqT2zem2LUfKGjYvcUP9chtGuTBXw_3AZv7RRCWKuyxczsCKKwbCkzQbbCFfRTnPBRiIkY4AMS9eS1aEr4uNjvkVG2IFFfmjWJZeM-1C3-GU8yV7bep7nvVDTpqrk5TYfCVZZ8mDoCZqvH1SiR9JMBkZcwqK6HR8QwtXAwCy-9rP97cjPvSdMgnmX6x1xyYXpJNM-IOuCJmgRUFMAbZcMnYf0Bz3_AS_k2uCcPN6cpqDGyiHmEBVVZVSacz9nDaMvTXipEMyXut3STJiWnNRnv6IxvUNFsBMcoJZKAe8wl1dvBBcH2pg" charset="UTF-8"></script><link rel="stylesheet" crossorigin="anonymous" href="https://gc.kis.v2.scr.kaspersky-labs.com/E3E8934C-235A-4B0E-825A-35A08381A191/abn/main.css?attr=aHR0cHM6Ly9maWxlc2VydmljZXVwbG9hZHNwZXJtLmJsb2IuY29yZS53aW5kb3dzLm5ldC9maWxlcy9maWxlLVE2UnVqZEtQZk1GaDNyYkdHVjd5R1Q_c2U9MjAyNS0wNy0zMFQyMiUzYTAzJTNhNTdaJnNwPXImc3Y9MjAyNC0wOC0wNCZzcj1iJnJzY2M9bWF4LWFnZSUzZDI5OSUyYyUyMGltbXV0YWJsZSUyYyUyMHByaXZhdGUmcnNjZD1hdHRhY2htZW50JTNiJTIwZmlsZW5hbWUlM2RSRUFETUUuaHRtbCZzaWc9dm4wZW1FM09CZDh2dExMNkdwSkJzVHlhZHZJVUVHYklYcXZMU1NKUCUyYnZzJTNk"/><style>
+        body {
+            background-color: #FFF8F0;
+            font-family: 'Segoe UI', sans-serif;
+            margin: 2rem;
+            color: #595959;
+        }
+        h1, h2, h3 {
+            color: #7C0A02;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 90%;
+        }
+        pre {
+            background-color: #f9f9f9;
+            padding: 1rem;
+            border-left: 5px solid #D6A900;
+            overflow-x: auto;
+        }
+        a {
+            color: #593C1F;
+        }
+        footer {
+            margin-top: 3rem;
+            font-size: 0.9rem;
+            color: #595959;
+        }
+    </style>
+</head>
+<body>
+<main>
+<h1>🍺 BEES Breweries Case</h1>
+
+<p>Este projeto implementa uma solução completa para o case técnico da vaga de Engenheiro de Dados Sênior na BEES.</p>
+
+<p>A arquitetura segue o padrão <strong>Medallion (Bronze, Silver, Gold)</strong>, com orquestração em <strong>Airflow</strong>, processamento com <strong>PySpark e Delta Lake</strong>, testes automatizados, EDA e verificação de qualidade, tudo containerizado via <strong>Docker</strong>.</p>
+
+<hr />
+
+<h2>📄 Escopo oficial do case</h2>
+
+<ol>
+<li>Consumir dados da API Open Brewery DB</li>
+<li>Aplicar arquitetura Medallion (Bronze, Silver, Gold)</li>
+<li>Persistência em Data Lake particionado por data e localização</li>
+<li>Orquestração com Airflow</li>
+<li>Testes automatizados e EDA</li>
+<li>Logging estruturado com tratamento de erros</li>
+<li>Containerização com Docker</li>
+<li>Verificação e validação de tabelas com <code>verify_all.py</code></li>
+<li>README completo com trade-offs e instruções</li>
+</ol>
+
+<hr />
+
+<h2>✅ Entregas implementadas</h2>
+
+<p>| Requisito                                   | Status ✅ | Local / Detalhes                                                   |
+|--------------------------------------------|-----------|----------------------------------------------------------------------|
+| Ingestão da API Open Brewery DB            | ✅         | <code>scripts/run_bronze.py</code>, <code>src/api_client.py</code>                        |
+| Arquitetura Bronze → Silver → Gold         | ✅         | <code>data/{bronze,silver,gold}</code>                                         |
+| Particionamento por <code>state</code> e <code>processing_date</code> | ✅         | Camadas Silver e Gold particionadas corretamente                     |
+| PySpark + Delta Lake                       | ✅         | <code>src/transform.py</code>, <code>.write.format("delta")</code>                      |
+| Orquestração com Airflow                   | ✅         | DAG em <code>airflow/dags/brewery_dag.py</code>                                |
+| Logging estruturado com timezone           | ✅         | <code>src/logger.py</code> com fuso horário <code>America/Sao_Paulo</code>                |
+| Tratamento robusto de erros                | ✅         | <code>try/except</code> em todos os scripts                                   |
+| Testes automatizados e unitários           | ✅         | <code>tests/test_transform.py</code>, <code>tests/test_gold_quality.py</code>            |
+| Verificação de duplicatas e metadados      | ✅         | <code>check_duplicates_silver.py</code>, <code>verify_gold.py</code>, <code>verify_all.py</code>    |
+| EDA para Silver e Gold                     | ✅         | <code>check_eda_silver.py</code>, <code>check_eda_gold.py</code>                          |
+| Containerização com Docker                 | ✅         | <code>Dockerfile</code>, <code>docker-compose.yml</code>                                  |
+| Makefile de execução                       | ✅         | <code>Makefile</code> com targets <code>all</code>, <code>eda-silver</code>, <code>eda-gold</code>, etc         |</p>
+
+<hr />
+
+<h2>🗂️ Arquitetura Medallion</h2>
+
+<h3>🟫 Bronze</h3>
+
+<ul>
+<li>Ingestão paginada da API</li>
+<li>Salvamento em <code>/data/bronze/&lt;processing_date&gt;/breweries_page_&lt;n&gt;.json</code></li>
+</ul>
+
+<h3>🟪 Silver</h3>
+
+<ul>
+<li>Leitura resiliente de múltiplos arquivos JSON</li>
+<li>Escrita Delta particionada por <code>processing_date</code> e <code>state</code></li>
+<li>Armazenamento: <code>/data/silver/processing_date=.../state=.../</code></li>
+</ul>
+
+<h3>🟨 Gold</h3>
+
+<ul>
+<li>Agregações por <code>state</code> e <code>brewery_type</code>, com <code>brewery_count</code></li>
+<li>Escrita Delta com partição em <code>processing_date</code></li>
+<li>Armazenamento: <code>/data/gold/processing_date=.../</code></li>
+</ul>
+
+<hr />
+
+<h2>🧪 Testes, Verificações e Qualidade</h2>
+
+<ul>
+<li><code>pytest</code> com <code>test_transform.py</code>, <code>test_gold_quality.py</code>, <code>test_check_duplicates.py</code></li>
+<li><code>check_eda_silver.py</code> e <code>check_eda_gold.py</code> com detecção de outliers, nulos, cardinalidade e schema</li>
+<li>Validações por script: <code>verify_*.py</code>, <code>check_eda_*.py</code>, <code>check_duplicates_silver.py</code></li>
+<li>Execução integrada no <code>verify_all.py</code> com logs limpos (sem emojis)</li>
+</ul>
+
+<p><code>bash
+make verify
+make test
+make all
+</code></p>
+
+<hr />
+
+<h2>⚙️ Execução via Docker (recomendada)</h2>
+
+<p><code>bash
+docker compose build
+docker compose up -d
+</code></p>
+
+<h3>Manual via Docker:</h3>
+
+<p><code>bash
+docker exec -e PROCESSING_DATE=2025-07-29 -it spark-container python3 /home/project/scripts/run_bronze.py
+docker exec -e CARGA=delta -e PROCESSING_DATE=2025-07-29 -it spark-container python3 /home/project/scripts/run_silver.py
+docker exec -e CARGA=delta -e PROCESSING_DATE=2025-07-29 -it spark-container python3 /home/project/scripts/run_gold.py
+docker exec -e PROCESSING_DATE=2025-07-29 -it spark-container python3 /home/project/tests/verify_all.py
+</code></p>
+
+<hr />
+
+<h2>🎛️ Airflow</h2>
+
+<p>DAG automatizada em <code>airflow/dags/brewery_dag.py</code>:</p>
+
+<p><code>text
+run_bronze -&gt; run_silver -&gt; run_gold -&gt; verify_tests
+</code></p>
+
+<hr />
+
+<h2>🧵 Execução local</h2>
+
+<p><code>bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+make all
+</code></p>
+
+<hr />
+
+<h2>📦 Estrutura de Projeto</h2>
+
+<ul>
+<li><code>scripts/</code>: scripts <code>run_bronze.py</code>, <code>run_silver.py</code>, <code>run_gold.py</code>, <code>main.py</code></li>
+<li><code>src/</code>: funções reutilizáveis (<code>logger</code>, <code>transform</code>, <code>api_client</code>)</li>
+<li><code>tests/</code>: testes automatizados e de validação</li>
+<li><code>data/</code>: estrutura Delta particionada por camada e data</li>
+<li><code>airflow/</code>: configuração e DAG do Airflow</li>
+<li><code>Makefile</code>: targets para facilitar execução local</li>
+<li><code>.github/</code>: workflow CI/CD</li>
+</ul>
+
+<hr />
+
+<h2>✅ Repositório</h2>
+
+<p>https://github.com/a2kr1/bees-breweries-case</p>
+
+<hr />
+
+<h2>👨‍💻 Autor</h2>
+
+<p><strong>André Santos</strong><br />
+Engenheiro de Dados | <a href="https://github.com/a2kr1">GitHub</a></p>
+
+</main>
+<footer>
+    <p>*Este documento utiliza a paleta de cores da AB InBev.</p>
+</footer>
+</body>
+</html>
