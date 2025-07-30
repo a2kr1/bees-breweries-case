@@ -1,0 +1,166 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Documentação Técnica – Projeto BEES</title>
+  <style>
+    body {
+      background-color: #FFF8F0;
+      color: #333;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 2rem;
+    }
+    h1, h2, h3 {
+      color: #7C0A02;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 1rem;
+      border-left: 4px solid #D6A900;
+      overflow-x: auto;
+    }
+    code {
+      background: #eee;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    a {
+      color: #593C1F;
+    }
+    hr {
+      margin: 2rem 0;
+    }
+  </style>
+</head>
+<body>
+<main>
+<br>
+# 📘 Documentação Técnica – Projeto BEES Breweries Case<br>
+<br>
+Este documento apresenta as principais decisões técnicas, arquitetura e estratégias utilizadas no desenvolvimento do case técnico de Engenharia de Dados para a BEES.<br>
+<br>
+---<br>
+<br>
+## 🔧 Escolhas Técnicas<br>
+<br>
+### 1. PySpark + Delta Lake como Plataforma Principal<br>
+- Utilização do PySpark como motor de processamento distribuído.<br>
+- Armazenamento com Delta Lake em disco local, permitindo versionamento, transações ACID e escrita particionada.<br>
+- Ideal para simular um ambiente de produção mesmo sem Databricks.<br>
+<br>
+### 2. Armazenamento Local com Delta Lake<br>
+- Os dados foram salvos em disco no formato Delta, organizados por camadas e particionados por `processing_date` e `state`.<br>
+- Benefícios:<br>
+  - Desempenho otimizado para leitura e escrita.<br>
+  - Facilidade para simular ambiente Data Lake em arquitetura Medallion.<br>
+  - Permite auditoria e rollback com controle de versão de dados.<br>
+<br>
+### 3. Orquestração com Apache Airflow<br>
+- Utilização do Airflow com DAG única (`brewery_dag.py`) para orquestrar todo o pipeline.<br>
+- Execução sequencial: Bronze → Silver → Gold → Verificações<br>
+- Flexibilidade para execução agendada ou manual.<br>
+<br>
+### 4. Containerização com Docker<br>
+- Todo o projeto pode ser executado via `docker-compose`.<br>
+- Criação de ambiente isolado, com dependências resolvidas.<br>
+- Inclui serviços de Spark, Airflow, e dashboard EDA.<br>
+<br>
+---<br>
+<br>
+## 🏗️ Arquitetura em Camadas (Medallion)<br>
+<br>
+### 🟫 Bronze<br>
+- Ingestão direta da API Open Brewery DB (paginada).<br>
+- Armazenamento de arquivos JSON brutos com controle por data.<br>
+<br>
+### 🟪 Silver<br>
+- Leitura resiliente dos arquivos da Bronze.<br>
+- Normalização dos dados e escrita em formato Delta particionado por `processing_date` e `state`.<br>
+- Aplicação de regras de schema e eliminação de duplicatas.<br>
+<br>
+### 🟨 Gold<br>
+- Agregações analíticas por `state` e `brewery_type`.<br>
+- Escrita em Delta particionado por `processing_date`.<br>
+<br>
+---<br>
+<br>
+## 📑 Metadados e Versionamento<br>
+<br>
+### Armazenamento Delta<br>
+- Cada tabela Delta permite versionamento e histórico de alterações (Time Travel).<br>
+- Acesso a snapshots com controle de schema evolution.<br>
+<br>
+### Metadados<br>
+- Estrutura padrão adotada para as colunas (ex: nomes consistentes entre camadas).<br>
+- Utilização de comentários nas colunas no modo `full` para documentação via `ALTER COLUMN`.<br>
+<br>
+---<br>
+<br>
+## 🧪 Verificações de Qualidade<br>
+<br>
+- Scripts automatizados de validação com `pytest` e `verify_all.py`.<br>
+- Verificações implementadas:<br>
+  - Existência de dados<br>
+  - Presença de valores nulos<br>
+  - Checagem de duplicatas<br>
+  - Validação de schema<br>
+<br>
+---<br>
+<br>
+## 📊 Dashboard EDA<br>
+<br>
+- Visualização simples via HTML, acessível em: `http://localhost:8080/eda`<br>
+- Página estática configurada via `webserver_config.py` no Airflow.<br>
+- Possível integração com dados da Silver em tempo real.<br>
+<br>
+---<br>
+<br>
+## ⚙️ Execução<br>
+<br>
+### Via Docker<br>
+```bash<br>
+docker compose build<br>
+docker compose up -d<br>
+```<br>
+<br>
+### Execução manual por container<br>
+```bash<br>
+docker exec -e PROCESSING_DATE=2025-07-30 -it spark-container python3 /home/project/scripts/run_bronze.py<br>
+docker exec -e PROCESSING_DATE=2025-07-30 -e CARGA=delta -it spark-container python3 /home/project/scripts/run_silver.py<br>
+docker exec -e PROCESSING_DATE=2025-07-30 -e CARGA=delta -it spark-container python3 /home/project/scripts/run_gold.py<br>
+docker exec -e PROCESSING_DATE=2025-07-30 -it spark-container python3 /home/project/tests/verify_all.py<br>
+```<br>
+<br>
+---<br>
+<br>
+## 📁 Estrutura dos Diretórios<br>
+<br>
+```<br>
+bees-breweries-case/<br>
+├── airflow/<br>
+│   ├── dags/<br>
+│   ├── static/<br>
+│   └── config/webserver_config.py<br>
+├── data/<br>
+│   ├── bronze/<br>
+│   ├── silver/<br>
+│   └── gold/<br>
+├── scripts/<br>
+├── src/<br>
+├── tests/<br>
+├── Dockerfile<br>
+├── docker-compose.yml<br>
+└── Makefile<br>
+```<br>
+<br>
+---<br>
+<br>
+## 👨‍💻 Autor<br>
+<br>
+**André Santos**  <br>
+Engenheiro de Dados | [github.com/a2kr1](https://github.com/a2kr1)<br>
+
+</main>
+</body>
+</html>
